@@ -2,9 +2,10 @@
 
 #include <TinyWireS.h>
 #include <LiquidCrystal.h>
+#include <EEPROM.h>
 
 // Debug Mode
-#define DBGME
+//#define DBGME
 
 // commands
 #define LCD_CLEARDISPLAY 0x01
@@ -18,6 +19,7 @@
 #define LCD_SETDIMENSION 0x9f
 #define LCD_SETCURSOR 0x9e
 #define LCD_SHOWFIRMWAREREVISION 0x9d
+#define LCD_SETADDRESS 0x9c
 
 // flags for backlight control
 #define LCD_BACKLIGHT 0x81
@@ -28,6 +30,8 @@
 #define TWI_RX_BUFFER_SIZE ( 32 )
 
 #define CONTRAST_PIN 2
+
+#define EEBASE_ADDR 24
 
 // Timeout in us after which we close the buffer and write it out
 #define CHARBUF_TIMEOUT 150
@@ -56,9 +60,14 @@ volatile byte data_expected = 0;
 //LiquidCrystal lcd(0, 3, 7, 8, 9, 10);
 // tinyLCD_I2C:
 LiquidCrystal lcd(3, 1, 9, 8, 7, 5);
+uint8_t slave_address;
 
 void setup() {
-  TinyWireS.begin(I2C_SLAVE_ADDRESS);
+  slave_address = read_address();
+  if (! slave_address) {
+    slave_address = I2C_SLAVE_ADDRESS;
+  }
+  TinyWireS.begin(slave_address);
   TinyWireS.onReceive(receiveEvent);
   //TinyWireS.onRequest(requestEvent);
   analogWrite(CONTRAST_PIN, 10);
@@ -119,7 +128,7 @@ void receiveEvent(uint8_t howMany) {
 }
 
 void commandByte(char c) {
-  uint8_t cols, rows, col, row;
+  uint8_t cols, rows, col, row, addr;
   switch (c) {
     case LCD_CLEARDISPLAY:
       #ifdef DBGME
@@ -177,6 +186,12 @@ void commandByte(char c) {
     case LCD_SHOWFIRMWAREREVISION:
       lcd_revision();
       break;
+    case LCD_SETADDRESS:
+      addr = TinyWireS.receive();
+      if (addr && ! (addr & 0x80)) {
+        write_address(addr);
+      }
+      break;
     default:
       #ifdef DBGME
       lcd.print("Unknown Com!");
@@ -221,10 +236,35 @@ void test_lcd() {
   lcd.print("================");
   delay(2000);
   lcd.clear();
+  lcd.setCursor(0,1);
+  lcd.print("Address: ");
+  lcd.print(slave_address, HEX);
+  delay(3000);
+  lcd.clear();
   lcd.print("Uptime now (s):");
   while ( 1 ) {
     lcd.setCursor(0,1);
     lcd.print(millis()/1);
-    lcd.print(" us");
+    lcd.print(" ms");
   }  
+}
+
+void write_address(uint8_t address) {
+	EEPROM.write(EEBASE_ADDR, address);
+	// write marker to know that we have a custom I2C address
+	EEPROM.write(EEBASE_ADDR + 1, 't');
+	EEPROM.write(EEBASE_ADDR + 2, 'L');
+	EEPROM.write(EEBASE_ADDR + 3, 'C');
+	EEPROM.write(EEBASE_ADDR + 4, 'D');
+	EEPROM.write(EEBASE_ADDR + 5, 0x00); // no more configs for the moment
+}
+
+uint8_t read_address() {
+	if (EEPROM.read(EEBASE_ADDR + 1) == 't' &&
+	    EEPROM.read(EEBASE_ADDR + 2) == 'L' &&
+	    EEPROM.read(EEBASE_ADDR + 3) == 'C' &&
+	    EEPROM.read(EEBASE_ADDR + 4) == 'D') {
+		return EEPROM.read(EEBASE_ADDR);
+	}
+	return 0;
 }
