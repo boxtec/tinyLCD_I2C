@@ -173,12 +173,16 @@ inline size_t tinyLCD_I2C::write(uint8_t value) {
 
 // write either command or data
 void tinyLCD_I2C::send(uint8_t value, uint8_t mode) {
-	Wire.beginTransmission(_Addr);
-	if ( mode == 0 ) {
-		Wire.write(mode);
-	}
-	Wire.write((int)(value));
-	Wire.endTransmission();   
+	int ret = 0;
+	uint8_t repeat = 4;
+	do {
+		Wire.beginTransmission(_Addr);
+		if ( mode == 0 ) {
+			Wire.write(mode);
+		}
+		Wire.write((int)(value));
+		ret = Wire.endTransmission();
+	} while (ret && repeat--);
 }
 
 
