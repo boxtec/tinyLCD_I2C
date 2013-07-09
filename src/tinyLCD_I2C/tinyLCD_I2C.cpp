@@ -173,42 +173,13 @@ inline size_t tinyLCD_I2C::write(uint8_t value) {
 
 // write either command or data
 void tinyLCD_I2C::send(uint8_t value, uint8_t mode) {
-	/*
-  uint8_t highnib=value>>4;
-	uint8_t lownib=value & 0x0F;
-	write4bits((highnib)|mode);
-	write4bits((lownib)|mode);
-  */
 	Wire.beginTransmission(_Addr);
-  if ( mode == 0 ) {
-    Wire.write(mode);
-  }
-  // bad delay, need to make the opposite site faster by using a buffer
-  delayMicroseconds(80);  
+	if ( mode == 0 ) {
+		Wire.write(mode);
+	}
 	Wire.write((int)(value));
 	Wire.endTransmission();   
 }
-
-/*
-void tinyLCD_I2C::write4bits(uint8_t value) {
-	expanderWrite(value);
-	pulseEnable(value);
-}
-
-void tinyLCD_I2C::expanderWrite(uint8_t _data){                                        
-	Wire.beginTransmission(_Addr);
-	Wire.write((int)(_data) | _backlightval);
-	Wire.endTransmission();   
-}
-
-void tinyLCD_I2C::pulseEnable(uint8_t _data){
-  expanderWrite(_data | En);	// En high
-	delayMicroseconds(1);		// enable pulse must be >450ns
-	
-	expanderWrite(_data & ~En);	// En low
-	delayMicroseconds(50);		// commands need > 37us to settle
-} 
-*/
 
 
 // Alias functions

@@ -25,9 +25,8 @@
 #define LCD_BACKLIGHT 0x81
 #define LCD_NOBACKLIGHT 0x80
 
-// I2C address/buffersize
+// I2C default address
 #define I2C_SLAVE_ADDRESS 0x50
-#define TWI_RX_BUFFER_SIZE ( 32 )
 
 #define CONTRAST_PIN 2
 
@@ -49,10 +48,9 @@ volatile byte reg_position;
 unsigned int buf_ix = 0; 
 // store time when the last char to print was received
 unsigned long lastwrite = 0;
-// char buffer for incoming strings
-char bigbuffer[32];
 // more data expected
 volatile byte data_expected = 0;
+
 
 // initialize the library with the numbers of the interface pins
 // LiquidCrystal(rs, enable, d4, d5, d6, d7);
@@ -68,7 +66,7 @@ void setup() {
     slave_address = I2C_SLAVE_ADDRESS;
   }
   TinyWireS.begin(slave_address);
-  TinyWireS.onReceive(receiveEvent);
+  TinyWireS.onReceive(receive_event);
   //TinyWireS.onRequest(requestEvent);
   analogWrite(CONTRAST_PIN, 10);
   lcd.begin(16,2);
@@ -77,15 +75,12 @@ void setup() {
 }
 
 void loop() {
-  if ( buf_ix > 0 && micros() - lastwrite > CHARBUF_TIMEOUT ) {
-    flush_buffer();
-  }
   TinyWireS_stop_check();
 }
 
 
 // not used yet:
-void requestEvent()
+void request_event()
 {  
     TinyWireS.send(i2c_regs[reg_position]);
     // Increment the reg position on each read, and loop back to zero
@@ -94,40 +89,25 @@ void requestEvent()
     lcd.print("=");
 }
 
-void receiveEvent(uint8_t howMany) {
-  //static int buf_ix = 0;
-  if (howMany < 1)
-  {
-      // Sanity-check
-      return;
-  }
-
-  char cmd = TinyWireS.receive();
-  // wait for a command
-  if ( cmd == 0 ) {
-    while (howMany < 1) {
-      tws_delay(1);    
-    }
-    char rxbuffer = TinyWireS.receive();
-    commandByte(rxbuffer);
-  }
-  /*
-  // direct print
-  else if ( cmd == 1 ) {
-    //lcd.print(rxbuffer);
-    // are we receiving a larger string ? Keep adding to buffer
-    if ( buf_ix == 0 || micros() - lastwrite < CHARBUF_TIMEOUT ) {
-      bigbuffer[buf_ix] = rxbuffer;
-      buf_ix++;
-    }
-  }
-  */
-  else if ( cmd > 1 ) {
-    lcd.print(cmd);
-  }
+void receive_event(uint8_t howMany) {
+	//static int buf_ix = 0;
+	if (howMany < 1) {
+		// Sanity-check
+		return;
+	}
+	while (TinyWireS.available()) {
+		char cmd = TinyWireS.receive();
+		// wait for a command
+		if ( cmd == 0 && howMany > 1 ) {
+			char rxbuffer = TinyWireS.receive();
+			command_byte(rxbuffer, howMany - 2);
+		} else if ( cmd > 1 ) {
+			lcd.print(cmd);
+		}
+	}
 }
 
-void commandByte(char c) {
+void command_byte(char c, byte bytesInBuffer) {
   uint8_t cols, rows, col, row, addr;
   switch (c) {
     case LCD_CLEARDISPLAY:
@@ -217,12 +197,6 @@ void lcd_revision() {
   lcd.print("$Revision: 1.13 $");
 }
 
-// flush receive buffer and output to LCD
-void flush_buffer() {
-  lcd.print(bigbuffer);
-  buf_ix = 0;
-  memset(&bigbuffer[0], 0, sizeof(bigbuffer));
-}
 
 void test_lcd() {
   lcd.print("==T=E=S=T=======");
