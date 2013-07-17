@@ -15,7 +15,6 @@ tinyLCD_I2C::tinyLCD_I2C(uint8_t lcd_addr, uint8_t lcd_cols, uint8_t lcd_rows)
   _Addr = lcd_addr;
   _cols = lcd_cols;
   _rows = lcd_rows;
-  _backlightval = LCD_NOBACKLIGHT;
 }
 
 void tinyLCD_I2C::init(){
@@ -30,44 +29,33 @@ void tinyLCD_I2C::init_priv()
 
 void tinyLCD_I2C::begin(uint8_t cols, uint8_t lines, uint8_t dotsize) {
   displayDimension(cols, lines);
-  delayMicroseconds(550*1000);
   clear();
-  delayMicroseconds(850*1000);
   home();
-  delayMicroseconds(650*1000);
 }
 
 void tinyLCD_I2C::displayDimension(uint8_t cols, uint8_t lines) {
-  command(LCD_SETDIMENSION);
-  command(cols);
-  command(lines);
+  uint8_t data[2];
+  data[0] = cols;
+  data[1] = lines;
+  send(LCD_SETDIMENSION, 0, 2, data);
 }
 
 // clear display
 void tinyLCD_I2C::clear(){
 	command(LCD_CLEARDISPLAY);// clear display, set cursor position to zero
-	delayMicroseconds(400);  // this command takes a long time!
 }
 
 // jump to 0,0
 void tinyLCD_I2C::home(){
 	command(LCD_RETURNHOME);  // set cursor position to zero
-	delayMicroseconds(400);  // this command takes a long time!
 }
 
 // set cursor position
-void tinyLCD_I2C::setCursor(uint8_t col, uint8_t row){
-	/* int row_offsets[] = { 0x00, 0x40, 0x14, 0x54 };
-	if ( row > _numlines ) {
-		row = _numlines-1;    // we count rows starting w/0
-	}
-	command(LCD_SETDDRAMADDR | (col + row_offsets[row])); */
-  command(LCD_SETCURSOR);
-  delayMicroseconds(2500);  
-  command(col);
-  delayMicroseconds(2500);  
-  command(row);
-  delayMicroseconds(2500);  
+void tinyLCD_I2C::setCursor(uint8_t col, uint8_t row) {
+  uint8_t data[2];
+  data[0] = col;
+  data[1] = row;
+  send(LCD_SETCURSOR, 0, 2, data);
 }
 
 
@@ -137,24 +125,29 @@ void tinyLCD_I2C::noAutoscroll(void) {
 // with custom characters
 void tinyLCD_I2C::createChar(uint8_t location, uint8_t charmap[]) {
 	location &= 0x7; // we only have 8 locations 0-7
-	command(LCD_SETCGRAMADDR | (location << 3));
-	for (int i=0; i<8; i++) {
-		write(charmap[i]);
-	}
+	send(LCD_SETCGRAMADDR | (location << 3), 0, 8, charmap);
 }
 
 // Turn the (optional) backlight off/on
 void tinyLCD_I2C::noBacklight(void) {
-	_backlightval=LCD_NOBACKLIGHT;
 	command(LCD_NOBACKLIGHT);
 }
 
 void tinyLCD_I2C::backlight(void) {
-	_backlightval=LCD_BACKLIGHT;
 	command(LCD_BACKLIGHT);
 }
 
+void tinyLCD_I2C::setBacklight(uint8_t value) {
+	send(LCD_SETBACKLIGHT, 0, 1, &value);
+}
 
+void tinyLCD_I2C::setContrast(uint8_t new_val) {
+	send(LCD_SETCONTRAST, 0, 1, &new_val);
+}
+
+void tinyLCD_I2C::changeI2CAddress(uint8_t new_address) {
+	send(LCD_SETADDRESS, 0, 1, &new_address);
+}
 
 /*********** mid level commands, for sending data/cmds */
 
@@ -172,7 +165,7 @@ inline size_t tinyLCD_I2C::write(uint8_t value) {
 /************ low level data pushing commands **********/
 
 // write either command or data
-void tinyLCD_I2C::send(uint8_t value, uint8_t mode) {
+void tinyLCD_I2C::send(uint8_t value, uint8_t mode, uint8_t len, uint8_t *data) {
 	int ret = 0;
 	uint8_t repeat = 4;
 	do {
@@ -181,9 +174,14 @@ void tinyLCD_I2C::send(uint8_t value, uint8_t mode) {
 			Wire.write(mode);
 		}
 		Wire.write((int)(value));
+		uint8_t i = 0;
+		while (len--) {
+			Wire.write(data[i++]);
+		}
 		ret = Wire.endTransmission();
 	} while (ret && repeat--);
 }
+
 
 
 // Alias functions
@@ -208,13 +206,6 @@ void tinyLCD_I2C::load_custom_character(uint8_t char_num, uint8_t *rows){
 		createChar(char_num, rows);
 }
 
-void tinyLCD_I2C::setBacklight(uint8_t new_val){
-	if(new_val){
-		backlight();		// turn backlight on
-	}else{
-		noBacklight();		// turn backlight off
-	}
-}
 
 void tinyLCD_I2C::printstr(const char c[]){
 	//This function is not identical to the function used for "real" I2C displays
@@ -236,5 +227,4 @@ uint8_t tinyLCD_I2C::keypad (){return 0;}
 uint8_t tinyLCD_I2C::init_bargraph(uint8_t graphtype){return 0;}
 void tinyLCD_I2C::draw_horizontal_graph(uint8_t row, uint8_t column, uint8_t len,  uint8_t pixel_col_end){}
 void tinyLCD_I2C::draw_vertical_graph(uint8_t row, uint8_t column, uint8_t len,  uint8_t pixel_row_end){}
-void tinyLCD_I2C::setContrast(uint8_t new_val){}
 

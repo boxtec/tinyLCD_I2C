@@ -15,20 +15,22 @@
 #define LCD_CURSORSHIFT 0x10
 #define LCD_FUNCTIONSET 0x20
 #define LCD_SETCGRAMADDR 0x40
-#define LCD_SETDDRAMADDR 0x80
 #define LCD_SETDIMENSION 0x9f
 #define LCD_SETCURSOR 0x9e
 #define LCD_SHOWFIRMWAREREVISION 0x9d
 #define LCD_SETADDRESS 0x9c
+#define LCD_SETCONTRAST 0x9b
 
 // flags for backlight control
 #define LCD_BACKLIGHT 0x81
 #define LCD_NOBACKLIGHT 0x80
+#define LCD_SETBACKLIGHT 0x82
 
 // I2C default address
 #define I2C_SLAVE_ADDRESS 0x50
 
 #define CONTRAST_PIN 2
+#define BACKLIGHT_PIN 3
 
 #define EEBASE_ADDR 24
 
@@ -68,7 +70,9 @@ void setup() {
   TinyWireS.begin(slave_address);
   TinyWireS.onReceive(receive_event);
   //TinyWireS.onRequest(requestEvent);
+    
   analogWrite(CONTRAST_PIN, 10);
+  analogWrite(BACKLIGHT_PIN, 255);
   lcd.begin(16,2);
   lcd.clear();
   //test_lcd();
@@ -108,59 +112,47 @@ void receive_event(uint8_t howMany) {
 }
 
 void command_byte(char c, byte bytesInBuffer) {
-  uint8_t cols, rows, col, row, addr;
+  uint8_t col, row, addr, val;
+  if (c & 0xC0 == LCD_SETCGRAMADDR) {
+    // construct character
+    uint8_t cdata[8];
+    uint8_t i;
+    for (i = 0; i < 8; i++) {
+      cdata[i] = TinyWireS.receive();
+    }
+    lcd.createChar((c & 0x38) >> 3, cdata);
+  } else if (c & 0xF8 == LCD_DISPLAYCONTROL || c & 0xF0 == LCD_CURSORSHIFT || c & 0xFC == LCD_ENTRYMODESET) {
+    lcd.command(c);
+  }
   switch (c) {
     case LCD_CLEARDISPLAY:
-      #ifdef DBGME
-      lcd.print("Clear Display!");
-      #endif
       lcd.clear();
       break;
     case LCD_RETURNHOME:
-      #ifdef DBGME
-      lcd.print("Return Home!");
-      #endif
       lcd.home();
       break;
     case LCD_BACKLIGHT:
-      #ifdef DBGME
-      lcd.print("Backlight!");
-      #endif
+      analogWrite(BACKLIGHT_PIN, 255);
       break;
     case LCD_NOBACKLIGHT:
-      #ifdef DBGME
-      lcd.print("No Backlight!");
-      #endif
+      analogWrite(BACKLIGHT_PIN, 0);
+      break;
+    case LCD_SETBACKLIGHT:
+      val = TinyWireS.receive();
+      analogWrite(BACKLIGHT_PIN, val);
+      break;
+    case LCD_SETCONTRAST:
+      val = TinyWireS.receive();
+      analogWrite(CONTRAST_PIN, val);
       break;
     case LCD_SETDIMENSION:
-      TinyWireS.receive();
-      cols = TinyWireS.receive();
-      TinyWireS.receive();
-      rows = TinyWireS.receive();
-      #ifdef DBGME
-      lcd.print("Set Dim:");
-      lcd.print(int(cols));
-      lcd.print(" / ");
-      lcd.print(int(rows));
-      tws_delay(660);
-      #endif
-      lcd_begin(cols, rows);
+      col = TinyWireS.receive();
+      row = TinyWireS.receive();
+      lcd_begin(col, row);
       break;
     case LCD_SETCURSOR:
-      if ( TinyWireS.receive() == 0 ) {
-        col = TinyWireS.receive();
-        if ( TinyWireS.receive() == 0 ) {
-          row = TinyWireS.receive();
-        }
-      }
-      #ifdef DBGME
-      lcd.print("Set Cursor:");
-      lcd.setCursor(0,1);
-      lcd.print(int(col));
-      lcd.print(" - ");
-      lcd.print(int(row));
-      tws_delay(660);
-      #endif
+      col = TinyWireS.receive();
+      row = TinyWireS.receive();
       lcd.setCursor(col, row);
       break;
     case LCD_SHOWFIRMWAREREVISION:

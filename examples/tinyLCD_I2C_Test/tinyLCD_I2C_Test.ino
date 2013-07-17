@@ -17,6 +17,29 @@ void setup()
   lcd.showFirmware();
   delay(1500);
   lcd.clear();
+  lcd.print("Backlight");
+  for (int i = 255; i >= 0; i--) {
+    lcd.setBacklight(i);
+    delay(10);
+  }
+  for (int i = 0; i < 256; i++) {
+    lcd.setBacklight(i);
+    delay(10);
+  }
+  delay(1000);
+  lcd.clear();
+  lcd.print("Contrast");
+  for (int i = 0; i < 256; i++) {
+    lcd.setContrast(i);
+    delay(10);
+  }
+  for (int i = 255; i >= 0; i--) {
+    lcd.setContrast(i);
+    delay(10);
+  }
+  lcd.setContrast(10);
+  delay(1000);
+  lcd.clear();
   lcd.print("Uptime now (us):");
 }
 
@@ -24,5 +47,5 @@ void loop() {
   lcd.setCursor(0,1);
   lcd.print(millis()/1);
   lcd.print(" ms");
-  delay(100);
+  delay(10);
 }

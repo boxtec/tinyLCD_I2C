@@ -24,11 +24,10 @@
 #define LCD_SETDIMENSION 0x9f
 #define LCD_SETCURSOR 0x9e
 #define LCD_SHOWFIRMWAREREVISION 0x9d
-#define LCD_SETDIMENSION 0x9f
-#define LCD_SETCURSOR 0x9e
+#define LCD_SETADDRESS 0x9c
+#define LCD_SETCONTRAST 0x9b
 #define LCD_AUTOSCROLL 0x17
 #define LCD_NOAUTOSCROLL 0x1a
-#define LCD_SHOWFIRMWAREREVISION 0x1b
 
 
 // flags for display entry mode
@@ -58,6 +57,7 @@
 // flags for backlight control
 #define LCD_BACKLIGHT 0x81
 #define LCD_NOBACKLIGHT 0x80
+#define LCD_SETBACKLIGHT 0x82
 
 #define En B00000100  // Enable bit
 #define Rw B00000010  // Read/Write bit
@@ -88,6 +88,7 @@ public:
   void shiftDecrement();
   void noBacklight();
   void backlight();
+  void setContrast(uint8_t new_val);
   void autoscroll();
   void noAutoscroll(); 
   void createChar(uint8_t, uint8_t[]);
@@ -109,10 +110,12 @@ public:
   void setBacklight(uint8_t new_val);				// alias for backlight() and nobacklight()
   void load_custom_character(uint8_t char_num, uint8_t *rows);	// alias for createChar()
   void printstr(const char[]);
+  
+  ////special API
+  void changeI2CAddress(uint8_t new_address);
 
 ////Unsupported API functions (not implemented in this library)
 uint8_t status();
-void setContrast(uint8_t new_val);
 uint8_t keypad();
 void setDelay(int,int);
 void on();
@@ -124,7 +127,7 @@ void draw_vertical_graph(uint8_t row, uint8_t column, uint8_t len,  uint8_t pixe
 
 private:
   void init_priv();
-  void send(uint8_t, uint8_t);
+  void send(uint8_t cmd, uint8_t value, uint8_t len = 0, uint8_t *data = NULL);
   //void write4bits(uint8_t);
   //void expanderWrite(uint8_t);
   //void pulseEnable(uint8_t);
@@ -135,7 +138,6 @@ private:
   uint8_t _numlines;
   uint8_t _cols;
   uint8_t _rows;
-  uint8_t _backlightval;
 };
 
 #endif
