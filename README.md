@@ -19,8 +19,9 @@ Also you should make the following change in ./hardware/tiny/cores/tiny/wiring.c
   // (volatile variables must be read from memory on every access)
 ```
 Basically add the line
-```  sei();```
-to the ISR(MILLISTIMER_OVF_vect) function so that it looks like above excerpt.
+```  sei();
+```
+to the **ISR(MILLISTIMER_OVF_vect)** function so that it looks like above excerpt.
 
 See http://forum.boxtec.ch/index.php/topic,2225.msg2845.html#msg2845 for a discussion on this issue.
 
