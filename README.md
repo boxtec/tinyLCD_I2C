@@ -12,14 +12,14 @@ http://code.google.com/p/arduino-tiny/
 
 Also you should make the following change in ./hardware/tiny/cores/tiny/wiring.c to improve performance of the TinyWireS library:
 
-ISR(MILLISTIMER_OVF_vect)
+```ISR(MILLISTIMER_OVF_vect)
 {
   sei();
   // copy these to local variables so they can be stored in registers
   // (volatile variables must be read from memory on every access)
-
+```
 Basically add the line
-  sei();
+```  sei();```
 to the ISR(MILLISTIMER_OVF_vect) function so that it looks like above excerpt.
 
 See http://forum.boxtec.ch/index.php/topic,2225.msg2845.html#msg2845 for a discussion on this issue.
@@ -31,12 +31,15 @@ The boards directory contains a Fritzing THT design on which current development
 Forum / contact
 ---------------
 Issues around the tinyLCD_I2C board and firmware can be discuess here:
--> http://forum.boxtec.ch/index.php/topic,2225.0.html
+- http://forum.boxtec.ch/index.php/topic,2225.0.html
 
 Credits
 -------
 Credits go to ..
+
 .. brohogan for bringing the TinyWireS library to life in the first place.
+
 .. pylon for fixing all the timing issue and race conditions in above library and enhancing the tinyLCD_I2C greatly (i.e. by adding SPI)
+
 .. MathiasW for adding a SMD design with reduced size
 
