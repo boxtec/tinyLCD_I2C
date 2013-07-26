@@ -68,6 +68,7 @@
 class tinyLCD_I2C : public Print {
 public:
   tinyLCD_I2C(uint8_t lcd_addr, uint8_t lcd_cols, uint8_t lcd_rows);
+  tinyLCD_I2C(uint8_t flags, uint8_t ss_pin, uint8_t lcd_cols, uint8_t lcd_rows);
   void begin(uint8_t cols, uint8_t rows, uint8_t charsize = LCD_5x8DOTS );
   void displayDimension(uint8_t, uint8_t);
   void clear();
@@ -123,7 +124,8 @@ void off();
 uint8_t init_bargraph(uint8_t graphtype);
 void draw_horizontal_graph(uint8_t row, uint8_t column, uint8_t len,  uint8_t pixel_col_end);
 void draw_vertical_graph(uint8_t row, uint8_t column, uint8_t len,  uint8_t pixel_col_end);
-	 
+
+enum { MODE_I2C, MODE_SPI };
 
 private:
   void init_priv();
@@ -138,6 +140,8 @@ private:
   uint8_t _numlines;
   uint8_t _cols;
   uint8_t _rows;
+  uint8_t _interface_mode;
+  uint8_t _ss_pin;
 };
 
 #endif

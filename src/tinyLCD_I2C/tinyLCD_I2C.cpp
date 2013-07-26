@@ -4,15 +4,23 @@
 #include "tinyLCD_I2C.h"
 #include <inttypes.h>
 #include "Wire.h"
+#include "SPI.h"
 #if ARDUINO < 100
   #include <WProgram.h>
 #else
   #include <Arduino.h>
 #endif
 
-tinyLCD_I2C::tinyLCD_I2C(uint8_t lcd_addr, uint8_t lcd_cols, uint8_t lcd_rows)
+tinyLCD_I2C::tinyLCD_I2C(uint8_t lcd_addr, uint8_t lcd_cols, uint8_t lcd_rows) : _interface_mode(MODE_I2C)
 {
   _Addr = lcd_addr;
+  _cols = lcd_cols;
+  _rows = lcd_rows;
+}
+
+tinyLCD_I2C::tinyLCD_I2C(uint8_t flags, uint8_t ss_pin, uint8_t lcd_cols, uint8_t lcd_rows) : _interface_mode(MODE_SPI)
+{
+  _ss_pin = ss_pin;
   _cols = lcd_cols;
   _rows = lcd_rows;
 }
@@ -23,7 +31,16 @@ void tinyLCD_I2C::init(){
 
 void tinyLCD_I2C::init_priv()
 {
-	Wire.begin();
+	if (_interface_mode == MODE_I2C) {
+		Wire.begin();
+	} else {
+		SPI.begin();
+		SPI.setDataMode(SPI_MODE0);
+		SPI.setClockDivider(SPI_CLOCK_DIV8);
+		pinMode(_ss_pin, OUTPUT);
+		pinMode(SS, OUTPUT); // necessary to be SPI master
+		digitalWrite(_ss_pin, HIGH);
+	}
 	begin(_cols, _rows);  
 }
 
@@ -167,19 +184,32 @@ inline size_t tinyLCD_I2C::write(uint8_t value) {
 // write either command or data
 void tinyLCD_I2C::send(uint8_t value, uint8_t mode, uint8_t len, uint8_t *data) {
 	int ret = 0;
-	uint8_t repeat = 4;
-	do {
-		Wire.beginTransmission(_Addr);
-		if ( mode == 0 ) {
-			Wire.write(mode);
+	if (_interface_mode == MODE_I2C) {
+		uint8_t repeat = 4;
+		do {
+			Wire.beginTransmission(_Addr);
+			if ( mode == 0 ) {
+				Wire.write(mode);
+			}
+			Wire.write((int)(value));
+			uint8_t i = 0;
+			while (len--) {
+				Wire.write(data[i++]);
+			}
+			ret = Wire.endTransmission();
+		} while (ret && repeat--);
+	} else {
+		digitalWrite(_ss_pin, LOW);
+		if (mode == 0) {
+			SPI.transfer(0);
 		}
-		Wire.write((int)(value));
+		SPI.transfer(value);
 		uint8_t i = 0;
 		while (len--) {
-			Wire.write(data[i++]);
+			SPI.transfer(data[i++]);
 		}
-		ret = Wire.endTransmission();
-	} while (ret && repeat--);
+		digitalWrite(_ss_pin, HIGH);
+	}
 }
 
 

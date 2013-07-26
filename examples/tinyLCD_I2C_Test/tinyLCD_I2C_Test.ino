@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <tinyLCD_I2C.h>
+#include "SPI.h"
 
 tinyLCD_I2C lcd(0x50,16,2);
 float vdd;
