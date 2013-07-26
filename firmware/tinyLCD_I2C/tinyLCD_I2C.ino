@@ -48,10 +48,10 @@ extern void usiTwiSlaveOvlHandler(); // from usiTwiSlave.c
 #  error USI SPI RX buffer size is not a power of 2
 #endif
 
-uint8_t spiRxHead = 0;
-uint8_t spiRxTail = 0;
-uint8_t spiRxBuf[USI_SPI_RX_BUFFER_SIZE];
-uint8_t spiRxEndBlock = 0;
+volatile uint8_t spiRxHead = 0;
+volatile uint8_t spiRxTail = 0;
+volatile uint8_t spiRxBuf[USI_SPI_RX_BUFFER_SIZE];
+volatile uint8_t spiRxEndBlock = 0;
 
 // Timeout in us after which we close the buffer and write it out
 #define CHARBUF_TIMEOUT 150
@@ -69,8 +69,6 @@ volatile byte reg_position;
 unsigned int buf_ix = 0; 
 // store time when the last char to print was received
 unsigned long lastwrite = 0;
-// more data expected
-volatile byte data_expected = 0;
 volatile byte interface_mode = 0; // I2C
 
 
@@ -140,15 +138,6 @@ void init_spi() {
 	pinMode(6, INPUT_PULLUP); // USCK
 }
 
-uint8_t spi_transfer(uint8_t data) {
-	USICR = _BV(USIWM0) | _BV(USICS1); // setup SPI mode 0, external clock
-	USIDR = data;
-	USISR = _BV(USIOIF); // clear flag and counter value
-	
-	while ( (USISR & _BV(USIOIF)) == 0 );
-	USICR = 0; // reset SPI hardware, allowing DO to be used for LCD
-	return USIDR;
-}
 
 void spi_buffer_write(uint8_t data) {
 	spiRxHead = ( spiRxHead + 1 ) & USI_SPI_RX_BUFFER_MASK;
@@ -174,16 +163,18 @@ uint8_t spi_buffer_read() {
 
 ISR(PCINT0_vect) {
 	if (interface_mode) {
-		if (digitalRead(10) == HIGH) {
+		if (digitalRead(SPI_SS) == HIGH) {
 			// finished reading bytes, set flag and stop interrupt
+			USICR = 0; // reset SPI hardware, allowing DO to be used for LCD
 			spiRxEndBlock = 1;
 			USICR &= ~ _BV(USIOIE);
 		} else {
 			// SS activated, start receiving and activate interrupt
 			USICR |= _BV(USIOIE);
+			USICR = _BV(USIWM0) | _BV(USICS1); // setup SPI mode 0, external clock
 		}
 	} else {
-		if (digitalRead(10) == HIGH) {
+		if (digitalRead(SPI_SS) == HIGH) {
 			interface_mode = 1;
 			init_spi();
 		}
@@ -300,6 +291,7 @@ uint8_t read_byte() {
 ISR(USI_OVF_vect) {
 	if (interface_mode) {
 		spi_buffer_write(USIDR);
+		USIDR = 0x5A; // set recognizable pattern to simplify debugging using logic analyzer
 	} else {
 		usiTwiSlaveOvlHandler();
 	}
