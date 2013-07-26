@@ -3,7 +3,10 @@
 #include <TinyWireS.h>
 #include <LiquidCrystal.h>
 #include <EEPROM.h>
-
+#include <avr/io.h>
+#include <inttypes.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
 // Debug Mode
 //#define DBGME
 
@@ -31,8 +34,24 @@
 
 #define CONTRAST_PIN 2
 #define BACKLIGHT_PIN 3
+#define SPI_SS 10
 
 #define EEBASE_ADDR 24
+
+extern void usiTwiSlaveOvlHandler(); // from usiTwiSlave.c
+
+// SPI RX buffer
+#define USI_SPI_RX_BUFFER_SIZE  ( 32 )
+#define USI_SPI_RX_BUFFER_MASK  ( USI_SPI_RX_BUFFER_SIZE - 1 )
+
+#if ( USI_SPI_RX_BUFFER_SIZE & USI_SPI_RX_BUFFER_MASK )
+#  error USI SPI RX buffer size is not a power of 2
+#endif
+
+uint8_t spiRxHead = 0;
+uint8_t spiRxTail = 0;
+uint8_t spiRxBuf[USI_SPI_RX_BUFFER_SIZE];
+uint8_t spiRxEndBlock = 0;
 
 // Timeout in us after which we close the buffer and write it out
 #define CHARBUF_TIMEOUT 150
@@ -52,6 +71,7 @@ unsigned int buf_ix = 0;
 unsigned long lastwrite = 0;
 // more data expected
 volatile byte data_expected = 0;
+volatile byte interface_mode = 0; // I2C
 
 
 // initialize the library with the numbers of the interface pins
@@ -63,34 +83,111 @@ LiquidCrystal lcd(3, 1, 9, 8, 7, 5);
 uint8_t slave_address;
 
 void setup() {
-  slave_address = read_address();
-  if (! slave_address) {
-    slave_address = I2C_SLAVE_ADDRESS;
-  }
-  TinyWireS.begin(slave_address);
-  TinyWireS.onReceive(receive_event);
-  //TinyWireS.onRequest(requestEvent);
-    
-  analogWrite(CONTRAST_PIN, 10);
-  analogWrite(BACKLIGHT_PIN, 255);
-  lcd.begin(16,2);
-  lcd.clear();
-  //test_lcd();
+	slave_address = read_address();
+	if (! slave_address) {
+		slave_address = I2C_SLAVE_ADDRESS;
+	}
+	TinyWireS.begin(slave_address);
+	TinyWireS.onReceive(receive_event);
+	//TinyWireS.onRequest(requestEvent);
+	
+	analogWrite(CONTRAST_PIN, 10);
+	analogWrite(BACKLIGHT_PIN, 255);
+	lcd.begin(16,2);
+	lcd.clear();
+	// check SPI status
+	pinMode(SPI_SS, INPUT);
+	if (digitalRead(SPI_SS) == HIGH) {
+		interface_mode = 1; // SPI
+		init_spi();
+#ifdef DBGME
+		lcd.setCursor(0,0);
+		lcd.print("Init 10 HIGH");
+#endif
+	}
+	// enable pin change interrupt
+	PCMSK0 = _BV(PCINT0);
+	GIMSK = _BV(PCIE0);
+	//test_lcd();
 }
 
+uint32_t last = 0;
+uint32_t count = 0;
 void loop() {
-  TinyWireS_stop_check();
+#ifdef DBGME
+	if (millis() - last >= 1000) {
+		last = millis();
+		lcd.setCursor(8,1);
+		lcd.print(count++);
+	}
+#endif
+	if (interface_mode) {
+		if (spiRxEndBlock) {
+			spiRxEndBlock = 0;
+			receive_event(available());
+		}
+	} else {
+		TinyWireS_stop_check();
+	}
 }
 
+void init_spi() {
+#ifdef DBGME
+	lcd.setCursor(0,0);
+	lcd.print("INIT SPI");
+#endif
+	pinMode(4, INPUT); // DI
+	pinMode(6, INPUT_PULLUP); // USCK
+}
 
-// not used yet:
-void request_event()
-{  
-    TinyWireS.send(i2c_regs[reg_position]);
-    // Increment the reg position on each read, and loop back to zero
-    reg_position = (reg_position+1) % sizeof(i2c_regs);
-    lcd.setCursor(3, 1);
-    lcd.print("=");
+uint8_t spi_transfer(uint8_t data) {
+	USICR = _BV(USIWM0) | _BV(USICS1); // setup SPI mode 0, external clock
+	USIDR = data;
+	USISR = _BV(USIOIF); // clear flag and counter value
+	
+	while ( (USISR & _BV(USIOIF)) == 0 );
+	USICR = 0; // reset SPI hardware, allowing DO to be used for LCD
+	return USIDR;
+}
+
+void spi_buffer_write(uint8_t data) {
+	spiRxHead = ( spiRxHead + 1 ) & USI_SPI_RX_BUFFER_MASK;
+	// check buffer size
+	if (spiRxHead == spiRxTail) {
+	// overrun
+		spiRxHead = (spiRxHead + USI_SPI_RX_BUFFER_SIZE - 1) & USI_SPI_RX_BUFFER_MASK;
+	} else {
+		spiRxBuf[ spiRxHead ] = data;
+	}
+}
+
+uint8_t spi_buffer_read() {
+	// wait for Rx data
+	while ( spiRxHead == spiRxTail );
+	
+	// calculate buffer index
+	spiRxTail = ( spiRxTail + 1 ) & USI_SPI_RX_BUFFER_MASK;
+	
+	// return data from the buffer.
+	return spiRxBuf[ spiRxTail ];
+}
+
+ISR(PCINT0_vect) {
+	if (interface_mode) {
+		if (digitalRead(10) == HIGH) {
+			// finished reading bytes, set flag and stop interrupt
+			spiRxEndBlock = 1;
+			USICR &= ~ _BV(USIOIE);
+		} else {
+			// SS activated, start receiving and activate interrupt
+			USICR |= _BV(USIOIE);
+		}
+	} else {
+		if (digitalRead(10) == HIGH) {
+			interface_mode = 1;
+			init_spi();
+		}
+	}
 }
 
 void receive_event(uint8_t howMany) {
@@ -100,10 +197,10 @@ void receive_event(uint8_t howMany) {
 		return;
 	}
 	while (TinyWireS.available()) {
-		char cmd = TinyWireS.receive();
+		char cmd = read_byte();
 		// wait for a command
 		if ( cmd == 0 && howMany > 1 ) {
-			char rxbuffer = TinyWireS.receive();
+			char rxbuffer = read_byte();
 			command_byte(rxbuffer, howMany - 2);
 		} else if ( cmd > 1 ) {
 			lcd.print(cmd);
@@ -113,12 +210,16 @@ void receive_event(uint8_t howMany) {
 
 void command_byte(char c, byte bytesInBuffer) {
   uint8_t col, row, addr, val;
+#ifdef DBGME
+  lcd.setCursor(0,0);
+  lcd.print("Got command");
+#endif
   if (c & 0xC0 == LCD_SETCGRAMADDR) {
     // construct character
     uint8_t cdata[8];
     uint8_t i;
     for (i = 0; i < 8; i++) {
-      cdata[i] = TinyWireS.receive();
+      cdata[i] = read_byte();
     }
     lcd.createChar((c & 0x38) >> 3, cdata);
   } else if (c & 0xF8 == LCD_DISPLAYCONTROL || c & 0xF0 == LCD_CURSORSHIFT || c & 0xFC == LCD_ENTRYMODESET) {
@@ -138,28 +239,28 @@ void command_byte(char c, byte bytesInBuffer) {
       analogWrite(BACKLIGHT_PIN, 0);
       break;
     case LCD_SETBACKLIGHT:
-      val = TinyWireS.receive();
+      val = read_byte();
       analogWrite(BACKLIGHT_PIN, val);
       break;
     case LCD_SETCONTRAST:
-      val = TinyWireS.receive();
+      val = read_byte();
       analogWrite(CONTRAST_PIN, val);
       break;
     case LCD_SETDIMENSION:
-      col = TinyWireS.receive();
-      row = TinyWireS.receive();
+      col = read_byte();
+      row = read_byte();
       lcd_begin(col, row);
       break;
     case LCD_SETCURSOR:
-      col = TinyWireS.receive();
-      row = TinyWireS.receive();
+      col = read_byte();
+      row = read_byte();
       lcd.setCursor(col, row);
       break;
     case LCD_SHOWFIRMWAREREVISION:
       lcd_revision();
       break;
     case LCD_SETADDRESS:
-      addr = TinyWireS.receive();
+      addr = read_byte();
       if (addr && ! (addr & 0x80)) {
         write_address(addr);
       }
@@ -172,6 +273,36 @@ void command_byte(char c, byte bytesInBuffer) {
       #endif
       break;
   }
+}
+
+uint8_t available() {
+	if (interface_mode) {
+		if (spiRxHead == spiRxTail) {
+			return 0;
+		}
+		if (spiRxHead < spiRxTail) {
+			return ((int8_t)spiRxHead - (int8_t)spiRxTail) + USI_SPI_RX_BUFFER_SIZE;
+		}
+		return spiRxHead - spiRxTail;
+	} else {
+		return TinyWireS.available();
+	}
+}
+
+uint8_t read_byte() {
+	if (interface_mode) {
+		return spi_buffer_read();
+	} else {
+		return TinyWireS.receive();
+	}
+}
+
+ISR(USI_OVF_vect) {
+	if (interface_mode) {
+		spi_buffer_write(USIDR);
+	} else {
+		usiTwiSlaveOvlHandler();
+	}
 }
 
 // start the display, helper for init()

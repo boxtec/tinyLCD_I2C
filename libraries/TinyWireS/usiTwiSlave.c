@@ -566,7 +566,8 @@ Only disabled when waiting for a new Start Condition.
 
 ********************************************************************************/
 volatile uint8_t last_unknown_address = 0;
-ISR( USI_OVERFLOW_VECTOR )
+//ISR( USI_OVERFLOW_VECTOR )
+void usiTwiSlaveOvlHandler()
 {
 
   switch ( overflowState )

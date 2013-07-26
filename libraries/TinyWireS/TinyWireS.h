@@ -38,6 +38,9 @@
 
 #include <inttypes.h>
 
+extern "C" {
+	void usiTwiSlaveOvlHandler();
+}
 
 class USI_TWI_S
 {
