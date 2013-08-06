@@ -36,6 +36,7 @@ THT-Board:
 - 220nF Cer Cap
 - 100k, 4.7k, 150R
 - ATtiny84A-PU
+- 28 Pin DIP socket (optional)
 - Header female (16pins)
 - 2x3 Pin Header male
 
