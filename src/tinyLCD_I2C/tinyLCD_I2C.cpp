@@ -36,7 +36,7 @@ void tinyLCD_I2C::init_priv()
 	} else {
 		SPI.begin();
 		SPI.setDataMode(SPI_MODE0);
-		SPI.setClockDivider(SPI_CLOCK_DIV8);
+		SPI.setClockDivider(SPI_CLOCK_DIV32);
 		pinMode(_ss_pin, OUTPUT);
 		pinMode(SS, OUTPUT); // necessary to be SPI master
 		digitalWrite(_ss_pin, HIGH);

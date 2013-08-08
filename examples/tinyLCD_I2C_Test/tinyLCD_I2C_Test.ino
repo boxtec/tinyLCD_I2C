@@ -2,13 +2,14 @@
 #include <tinyLCD_I2C.h>
 #include "SPI.h"
 
-tinyLCD_I2C lcd(0x50,16,2);
-float vdd;
+//tinyLCD_I2C lcd(0x50,16,2);
+tinyLCD_I2C lcd(0,10,16,2);
 
 void setup()
 {
   lcd.init();                      // initialize the lcd 
   //lcd.backlight();        // not implemented yet
+  /*
   delay(1);
   lcd.print("HELLO - WORLD!");
   delay(1200);
@@ -42,11 +43,12 @@ void setup()
   delay(1000);
   lcd.clear();
   lcd.print("Uptime now (us):");
+  */
 }
 
 void loop() {
   lcd.setCursor(0,1);
   lcd.print(millis()/1);
   lcd.print(" ms");
-  delay(10);
+  delay(10000);
 }

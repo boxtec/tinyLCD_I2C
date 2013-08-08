@@ -35,6 +35,8 @@
 #define CONTRAST_PIN 2
 #define BACKLIGHT_PIN 3
 #define SPI_SS 10
+#define SPI_SS_PORT PINA
+#define SPI_SS_MASK 1
 
 #define EEBASE_ADDR 24
 
@@ -80,6 +82,18 @@ volatile byte interface_mode = 0; // I2C
 LiquidCrystal lcd(3, 1, 9, 8, 7, 5);
 uint8_t slave_address;
 
+
+inline uint8_t common_available() {
+	uint8_t buffsize = 0;
+	if (interface_mode) {
+		buffsize =  (spiRxHead - spiRxTail) & USI_SPI_RX_BUFFER_MASK;
+	} else {
+		buffsize = TinyWireS.available();
+	}
+	return buffsize;
+}
+
+
 void setup() {
 	slave_address = read_address();
 	if (! slave_address) {
@@ -92,6 +106,8 @@ void setup() {
 	analogWrite(CONTRAST_PIN, 10);
 	analogWrite(BACKLIGHT_PIN, 255);
 	lcd.begin(16,2);
+	lcd_revision();
+	delay(500);
 	lcd.clear();
 	// check SPI status
 	pinMode(SPI_SS, INPUT);
@@ -112,17 +128,13 @@ void setup() {
 uint32_t last = 0;
 uint32_t count = 0;
 void loop() {
-#ifdef DBGME
-	if (millis() - last >= 1000) {
-		last = millis();
-		lcd.setCursor(8,1);
-		lcd.print(count++);
-	}
-#endif
 	if (interface_mode) {
 		if (spiRxEndBlock) {
 			spiRxEndBlock = 0;
-			receive_event(available());
+			uint8_t avail = common_available();
+			if (avail) {
+				receive_event(avail);
+			}
 		}
 	} else {
 		TinyWireS_stop_check();
@@ -136,6 +148,7 @@ void init_spi() {
 #endif
 	pinMode(4, INPUT); // DI
 	pinMode(6, INPUT_PULLUP); // USCK
+	pinMode(5, OUTPUT); // DO
 }
 
 
@@ -163,18 +176,16 @@ uint8_t spi_buffer_read() {
 
 ISR(PCINT0_vect) {
 	if (interface_mode) {
-		if (digitalRead(SPI_SS) == HIGH) {
+		if (SPI_SS_PORT & SPI_SS_MASK) {
 			// finished reading bytes, set flag and stop interrupt
 			USICR = 0; // reset SPI hardware, allowing DO to be used for LCD
 			spiRxEndBlock = 1;
-			USICR &= ~ _BV(USIOIE);
 		} else {
 			// SS activated, start receiving and activate interrupt
-			USICR |= _BV(USIOIE);
-			USICR = _BV(USIWM0) | _BV(USICS1); // setup SPI mode 0, external clock
+			USICR = _BV(USIWM0) | _BV(USICS1) | _BV(USIOIE); // setup SPI mode 0, external clock
 		}
 	} else {
-		if (digitalRead(SPI_SS) == HIGH) {
+		if (SPI_SS_PORT & SPI_SS_MASK) {
 			interface_mode = 1;
 			init_spi();
 		}
@@ -183,18 +194,33 @@ ISR(PCINT0_vect) {
 
 void receive_event(uint8_t howMany) {
 	//static int buf_ix = 0;
-	if (howMany < 1) {
-		// Sanity-check
-		return;
+	uint8_t cavail = common_available();
+	lcd.clear();
+	lcd.setCursor(0,1);
+	lcd.print(spiRxTail, HEX);
+	lcd.write(' ');
+	lcd.print(spiRxHead - spiRxTail, HEX);
+	lcd.write(' ');
+	lcd.print((spiRxHead - spiRxTail) & USI_SPI_RX_BUFFER_MASK, HEX);
+	lcd.write(' ');
+	lcd.print(spiRxHead, HEX);
+	lcd.write(' ');
+	lcd.print(cavail, HEX);
+	lcd.setCursor(0,0);
+	uint8_t cur = spiRxTail;
+	while (cur != spiRxHead) {
+		cur = (cur + 1) & USI_SPI_RX_BUFFER_MASK;
+		lcd.print(spiRxBuf[cur], HEX);
+		lcd.write(' ');
 	}
-	while (TinyWireS.available()) {
+	while (common_available()) {
 		char cmd = read_byte();
 		// wait for a command
 		if ( cmd == 0 && howMany > 1 ) {
 			char rxbuffer = read_byte();
-			command_byte(rxbuffer, howMany - 2);
+			//command_byte(rxbuffer, howMany - 2);
 		} else if ( cmd > 1 ) {
-			lcd.print(cmd);
+			//lcd.print(cmd);
 		}
 	}
 }
@@ -266,20 +292,6 @@ void command_byte(char c, byte bytesInBuffer) {
   }
 }
 
-uint8_t available() {
-	if (interface_mode) {
-		if (spiRxHead == spiRxTail) {
-			return 0;
-		}
-		if (spiRxHead < spiRxTail) {
-			return ((int8_t)spiRxHead - (int8_t)spiRxTail) + USI_SPI_RX_BUFFER_SIZE;
-		}
-		return spiRxHead - spiRxTail;
-	} else {
-		return TinyWireS.available();
-	}
-}
-
 uint8_t read_byte() {
 	if (interface_mode) {
 		return spi_buffer_read();
@@ -290,8 +302,9 @@ uint8_t read_byte() {
 
 ISR(USI_OVF_vect) {
 	if (interface_mode) {
+		USISR = (1 << USIOIF);
 		spi_buffer_write(USIDR);
-		USIDR = 0x5A; // set recognizable pattern to simplify debugging using logic analyzer
+		//USIDR = 0x5A; // set recognizable pattern to simplify debugging using logic analyzer
 	} else {
 		usiTwiSlaveOvlHandler();
 	}
@@ -307,34 +320,34 @@ void lcd_begin(uint8_t cols, uint8_t rows) {
 // display revision
 void lcd_revision() {
   lcd.clear();
-  lcd.print("tinyLCD_I2C :");
+  lcd.print(F("tinyLCD_I2C :"));
   lcd.setCursor(0, 1);
-  lcd.print("$Revision: 1.13 $");
+  lcd.print(F("$Revision: 1.13 $"));
 }
 
 
 void test_lcd() {
-  lcd.print("==T=E=S=T=======");
+  lcd.print(F("==T=E=S=T======="));
   delay(1200);
   lcd.setCursor(0,1);
-  lcd.print("XXXXXXXXXXXXXXX");
+  lcd.print(F("XXXXXXXXXXXXXXX"));
   delay(1200);
   lcd.clear();
-  lcd.print("XXXXXXXXXXXXXXXX");
+  lcd.print(F("XXXXXXXXXXXXXXXX"));
   lcd.setCursor(0,1);
-  lcd.print("================");
+  lcd.print(F("================"));
   delay(2000);
   lcd.clear();
   lcd.setCursor(0,1);
-  lcd.print("Address: ");
+  lcd.print(F("Address: "));
   lcd.print(slave_address, HEX);
   delay(3000);
   lcd.clear();
-  lcd.print("Uptime now (s):");
+  lcd.print(F("Uptime now (s):"));
   while ( 1 ) {
     lcd.setCursor(0,1);
     lcd.print(millis()/1);
-    lcd.print(" ms");
+    lcd.print(F(" ms"));
   }  
 }
 
