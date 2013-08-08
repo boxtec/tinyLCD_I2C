@@ -30,6 +30,23 @@ Boards / PCBs
 -------------
 The boards directory contains a Fritzing THT design on which current development is based and an Eagle 6.x SMD design which is currently in production for first prototypes.
 
+BOM
+---
+THT-Board:
+- 220nF Cer Cap
+- 100k, 4.7k, 150R
+- ATtiny84A-PU
+- 28 Pin DIP socket (optional)
+- Header female (16pins)
+- 2x3 Pin Header male
+
+SMD-Board:
+- 220nF Cer Cap
+- 100k, 4.7k, 150R
+- ATtiny84-SU (SOIC)
+- Header female (16pins)
+- 2x3 Pin Header male
+
 Forum / contact
 ---------------
 Issues around the tinyLCD_I2C board and firmware can be discuess here:
