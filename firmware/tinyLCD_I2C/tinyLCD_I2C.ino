@@ -58,19 +58,6 @@ volatile uint8_t spiRxEndBlock = 0;
 // Timeout in us after which we close the buffer and write it out
 #define CHARBUF_TIMEOUT 150
 
-volatile uint8_t i2c_regs[] =
-{
-    0xDE, 
-    0xAD, 
-    0xBE, 
-    0xEF, 
-};
-// Tracks the current register pointer position
-volatile byte reg_position;
-// buffer index for lcd.print strings
-unsigned int buf_ix = 0; 
-// store time when the last char to print was received
-unsigned long lastwrite = 0;
 volatile byte interface_mode = 0; // I2C
 
 
@@ -83,14 +70,12 @@ LiquidCrystal lcd(3, 1, 9, 8, 7, 5);
 uint8_t slave_address;
 
 
-inline uint8_t common_available() {
-	uint8_t buffsize = 0;
+uint8_t common_available() {
 	if (interface_mode) {
-		buffsize =  (spiRxHead - spiRxTail) & USI_SPI_RX_BUFFER_MASK;
+		return (spiRxHead - spiRxTail) & USI_SPI_RX_BUFFER_MASK;
 	} else {
-		buffsize = TinyWireS.available();
+		return TinyWireS.available();
 	}
-	return buffsize;
 }
 
 
@@ -114,10 +99,6 @@ void setup() {
 	if (digitalRead(SPI_SS) == HIGH) {
 		interface_mode = 1; // SPI
 		init_spi();
-#ifdef DBGME
-		lcd.setCursor(0,0);
-		lcd.print("Init 10 HIGH");
-#endif
 	}
 	// enable pin change interrupt
 	PCMSK0 = _BV(PCINT0);
@@ -125,8 +106,6 @@ void setup() {
 	//test_lcd();
 }
 
-uint32_t last = 0;
-uint32_t count = 0;
 void loop() {
 	if (interface_mode) {
 		if (spiRxEndBlock) {
@@ -142,10 +121,6 @@ void loop() {
 }
 
 void init_spi() {
-#ifdef DBGME
-	lcd.setCursor(0,0);
-	lcd.print("INIT SPI");
-#endif
 	pinMode(4, INPUT); // DI
 	pinMode(6, INPUT_PULLUP); // USCK
 	pinMode(5, OUTPUT); // DO
@@ -164,8 +139,10 @@ void spi_buffer_write(uint8_t data) {
 }
 
 uint8_t spi_buffer_read() {
-	// wait for Rx data
-	while ( spiRxHead == spiRxTail );
+	// sanity check
+	if ( spiRxHead == spiRxTail ) {
+		return 255;
+	}
 	
 	// calculate buffer index
 	spiRxTail = ( spiRxTail + 1 ) & USI_SPI_RX_BUFFER_MASK;
@@ -182,7 +159,7 @@ ISR(PCINT0_vect) {
 			spiRxEndBlock = 1;
 		} else {
 			// SS activated, start receiving and activate interrupt
-			USICR = _BV(USIWM0) | _BV(USICS1) | _BV(USIOIE); // setup SPI mode 0, external clock
+			USICR = _BV(USIWM0) | _BV(USICS1) | _BV(USIOIE); // setup SPI mode 0, external clock, overflow interrupt enabled
 		}
 	} else {
 		if (SPI_SS_PORT & SPI_SS_MASK) {
@@ -227,10 +204,6 @@ void receive_event(uint8_t howMany) {
 
 void command_byte(char c, byte bytesInBuffer) {
   uint8_t col, row, addr, val;
-#ifdef DBGME
-  lcd.setCursor(0,0);
-  lcd.print("Got command");
-#endif
   if (c & 0xC0 == LCD_SETCGRAMADDR) {
     // construct character
     uint8_t cdata[8];
@@ -302,7 +275,7 @@ uint8_t read_byte() {
 
 ISR(USI_OVF_vect) {
 	if (interface_mode) {
-		USISR = (1 << USIOIF);
+		USISR = (1 << USIOIF); // clear interrupt flag
 		spi_buffer_write(USIDR);
 		//USIDR = 0x5A; // set recognizable pattern to simplify debugging using logic analyzer
 	} else {
