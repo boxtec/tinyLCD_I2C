@@ -34,7 +34,7 @@ BOM
 ---
 THT-Board:
 - 220nF Cer Cap
-- 100k, 4.7k, 150R
+- 100k(R4), 4.7k(R2), 150R(R3)
 - ATtiny84A-PU
 - 14 Pin DIP socket (optional)
 - Header female (16pins)
@@ -42,14 +42,14 @@ THT-Board:
 
 SMD-Board:
 - 220nF Cer Cap
-- 100k, 4.7k, 150R
+- 100k, 1k, 150R
 - ATtiny84-SU (SOIC)
 - Header female (16pins)
 - 2x3 Pin Header male
 
 Forum / contact
 ---------------
-Issues around the tinyLCD_I2C board and firmware can be discuess here:
+Issues around the tinyLCD_I2C board and firmware can be discussed here:
 - http://forum.boxtec.ch/index.php/topic,2225.0.html
 
 Credits
